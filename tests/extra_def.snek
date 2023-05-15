@@ -1,0 +1,4 @@
+(fun (double x) (* x 2))
+
+(double 1)
+(fun (dd x) (- x 1))

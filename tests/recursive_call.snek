@@ -1,0 +1,12 @@
+(fun (rec n) (
+    if
+    (= n 0)
+    0
+    (
+        block
+        (print n)
+        (rec (- n 1))
+    )
+))
+
+(+ 0 (rec input))

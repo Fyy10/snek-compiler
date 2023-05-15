@@ -1,0 +1,4 @@
+(fun (f1 arg1) (add1 arg1))
+(fun (f2 arg1 arg2) (+ arg1 arg2))
+
+(f1 input input)

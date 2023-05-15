@@ -1,0 +1,8 @@
+(fun (fact sofar n) (
+    if
+    (= n 1)
+    sofar
+    (fact (* sofar n) (+ n -1))
+))
+
+(fact 1 input)

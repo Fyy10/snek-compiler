@@ -1,0 +1,8 @@
+(fun (dup arg) (add1 arg))
+(fun (dup arg1 arg2) (* arg1 arg2))
+
+(
+    block
+    (dup 1)
+    (dup 10 2)
+)

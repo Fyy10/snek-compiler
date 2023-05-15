@@ -1,0 +1,19 @@
+(
+    block
+    (
+        let
+        ((i 0))
+        (
+            loop
+            (
+                if (= i input)
+                (break i)
+                (
+                    block
+                    (print i)
+                    (set! i (+ i 1))
+                )
+            )
+        )
+    )
+)

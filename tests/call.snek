@@ -1,0 +1,10 @@
+(fun (impart1 p1) (+ p1 p1))
+(fun (impart2 p1 p2) (+ p1 p2))
+
+(
+    block
+    (print input)
+    (print (impart1 (+ input 1)))
+    (print (impart2 (impart1 (* input 3)) (+ input 2)))
+    (impart1 input)
+)

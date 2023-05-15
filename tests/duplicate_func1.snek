@@ -1,0 +1,4 @@
+(fun (dup a) a)
+(fun (dup a) (add1 a))
+
+(dup input)
