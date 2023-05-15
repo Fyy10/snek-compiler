@@ -1,5 +1,10 @@
 # snek-compiler
 
+- [snek-compiler](#snek-compiler)
+  - [The Snek Language](#the-snek-language)
+    - [Concrete Syntax](#concrete-syntax)
+    - [Abstract Syntax (in Rust)](#abstract-syntax-in-rust)
+
 An x86_64 compiler for snek language.
 
 ## The Snek Language
