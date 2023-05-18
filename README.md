@@ -4,6 +4,11 @@
   - [The Snek Language](#the-snek-language)
     - [Concrete Syntax](#concrete-syntax)
     - [Abstract Syntax (in Rust)](#abstract-syntax-in-rust)
+  - [Usage](#usage)
+    - [Compile to assembly](#compile-to-assembly)
+    - [Compile to executable binary](#compile-to-executable-binary)
+    - [Run the executable](#run-the-executable)
+  - [Testing](#testing)
 
 An x86_64 compiler for snek language.
 
@@ -29,6 +34,8 @@ An x86_64 compiler for snek language.
     | (loop <expr>)
     | (break <expr>)
     | (<name> <expr>*)
+    | (tuple <expr>+)
+    | (index <expr> <expr>)
 
 <op1> := add1 | sub1 | isnum | isbool | print
 <op2> := + | - | * | < | > | >= | <= | =
@@ -87,3 +94,45 @@ struct Prog {
 }
 
 ```
+
+## Usage
+
+Create a `.snek` file in the folder `tests`, e.g., `tests/example.snek`.
+
+```plain
+(fun (fact sofar n) (
+    if
+    (= n 1)
+    sofar
+    (fact (* sofar n) (+ n -1))
+))
+
+(fact 1 input)
+```
+
+This sample code computes `input!`, where `3!=3*2*1=6`.
+
+### Compile to assembly
+
+```bash
+make tests/example.s
+```
+
+The assembly code is generated in `tests/example.s`.
+
+### Compile to executable binary
+
+```bash
+make tests/example.run
+```
+
+The executable is generated in `tests/example.run`.
+
+### Run the executable
+
+```bash
+# 10 is the input value, default is "false"
+./tests/example.run 10
+```
+
+## Testing
