@@ -4,6 +4,8 @@
   - [The Snek Language](#the-snek-language)
     - [Concrete Syntax](#concrete-syntax)
     - [Abstract Syntax (in Rust)](#abstract-syntax-in-rust)
+    - [Data Representations](#data-representations)
+      - [Tuple structure in heap](#tuple-structure-in-heap)
   - [Usage](#usage)
     - [Compile to assembly](#compile-to-assembly)
     - [Compile to executable binary](#compile-to-executable-binary)
@@ -79,9 +81,12 @@ enum Expr {
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
-
     Print(Box<Expr>),
     Call(String, Vec<Expr>),
+
+    Tuple(Vec<Expr>),
+    Index(Box<Expr>, Box<Expr>),
+    Nil,
 }
 
 enum Def {
@@ -94,6 +99,26 @@ struct Prog {
 }
 
 ```
+
+### Data Representations
+
+`[....]` represents the last hex digit in binary.
+
+|Data|Representation|
+|:-:|:-:|
+|Numbers|`0x........ .......[...0]`|
+|True|`0x00000000 0000000[0111]`|
+|False|`0x00000000 0000000[0011]`|
+|Tuple|`0x........ .......[..01]`|
+|nil|`0x00000000 0000000[0001]`|
+
+#### Tuple structure in heap
+
+```plain
+(tuple val1 val2 ...)
+```
+
+`[size, val1, val2, ...]`
 
 ## Usage
 
@@ -133,6 +158,13 @@ The executable is generated in `tests/example.run`.
 ```bash
 # 10 is the input value, default is "false"
 ./tests/example.run 10
+# output: 3628800
 ```
 
 ## Testing
+
+Write test files (`.snek` files) in the `tests` directory and then run:
+
+```bash
+make test
+```
