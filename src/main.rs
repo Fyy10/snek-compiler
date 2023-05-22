@@ -27,6 +27,7 @@ enum Reg {
     RSP,
     RDI,
     RSI,
+    R15,
 }
 
 #[derive(Debug)]
@@ -105,9 +106,12 @@ enum Expr {
     Break(Box<Expr>),
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
-
     Print(Box<Expr>),
     Call(String, Vec<Expr>),
+
+    Tuple(Vec<Expr>),
+    Index(Box<Expr>, Box<Expr>),
+    Nil,
 }
 
 /// check if the expression is a function definition
@@ -251,13 +255,21 @@ fn parse_expr(s : &Sexp) -> Expr {
                 [Sexp::Atom(S(word)), expr] if word == "print" =>
                     Expr::Print(Box::new(parse_expr(expr))),
                 // (fname args...)
-                [Sexp::Atom(S(fname)), args @ ..] => {
+                [Sexp::Atom(S(fname)), args @ ..] if !is_reserved(fname.to_string()) => {
                     let mut arg_exprs = Vec::<Expr>::new();
                     for arg in args {
                         arg_exprs.push(parse_expr(arg));
                     }
                     Expr::Call(fname.to_string(), arg_exprs)
                 }
+                // (tuple vec![expr..])
+                [Sexp::Atom(S(word)), exprs @ ..] if word == "tuple" => {
+                    // same as parsing block expr
+                    Expr::Tuple(parse_block(exprs))
+                }
+                // (index var_expr, idx_expr)
+                [Sexp::Atom(S(word)), var_expr, idx_expr] if word == "index" =>
+                    Expr::Index(Box::new(parse_expr(var_expr)), Box::new(parse_expr(idx_expr))),
                 _ => panic!("Invalid: parse error")
             }
         // variable or keyword
@@ -268,6 +280,7 @@ fn parse_expr(s : &Sexp) -> Expr {
                 "true" => Expr::True,
                 "false" => Expr::False,
                 "input" => Expr::Input,
+                "nil" => Expr::Nil,
                 _ => {
                     check_valid_and_not_reserved(s.to_string());
                     Expr::Id(s.to_string())
@@ -278,7 +291,7 @@ fn parse_expr(s : &Sexp) -> Expr {
     }
 }
 
-/// check if variable name is reserved
+/// check if variable name is reserved, return true if it is
 fn is_reserved(name : String) -> bool {
     let names = [
         "add1",
@@ -305,6 +318,9 @@ fn is_reserved(name : String) -> bool {
         "break",
         "print",
         "fun",
+        "tuple",
+        "index",
+        "nil",
     ];
     if names.contains(&name.as_str()) {
         return true;
@@ -382,15 +398,15 @@ fn new_label(l : &mut i32, s : &str) -> String {
 fn check_rax_isnum_instrs() -> Vec<Instr> {
     // check value
     // mov rsi, {INVALID_ARGUMENT_ERROR}
-    // cmp rax, 0b11
+    // cmp rax, 0b111
     // je throw_error
-    // cmp rax, 0b01
+    // cmp rax, 0b011
     // je throw_error
     let mut ans = Vec::<Instr>::new();
     ans.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
-    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b11)));
+    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b111)));
     ans.push(Instr::IJe("throw_error".to_string()));
-    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b01)));
+    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b011)));
     ans.push(Instr::IJe("throw_error".to_string()));
     ans
 }
@@ -434,8 +450,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
     println!("compile to instrs: {:?}", e);
     match e {
         Expr::Number(n) => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(*n << 1))],
-        Expr::True => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11))],
-        Expr::False => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b01))],
+        Expr::True => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b111))],
+        Expr::False => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b011))],
         Expr::Input => {
             // if env contains "input", then we are compiling a function body
             // function body should not contain "input"
@@ -470,33 +486,35 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
         //     compile_expr(subexpr, si, env) + "\n  neg rax",
         // isnum
         Expr::UnOp(Op1::IsNum, subexpr) => {
+            // check the tag, numbers have 0b0 in the last bit
             // mov rax, <subexpr>
             // and rax, 1
             // cmp rax, 1
-            // mov rbx, 1
-            // mov rax, 3
+            // mov rbx, 0b11
+            // mov rax, 0b111
             // cmove rax, rbx
             let mut ans = compile_to_instrs(subexpr, si, env, fnames, break_target, label);
             ans.push(Instr::IAnd(Val::Reg(Reg::RAX), Val::Imm(1)));
             ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(1)));
-            ans.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(1)));
-            ans.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(3)));
+            ans.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b11)));
+            ans.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b111)));
             ans.push(Instr::ICmove(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             ans
         }
         // isbool
         Expr::UnOp(Op1::IsBool, subexpr) => {
+            // check the tag, booleans have 0b11 in the last bits
             // mov rax, <subexpr>
-            // and rax, 1
-            // cmp rax, 1
-            // mov rbx, 3
-            // mov rax, 1
+            // and rax, 0b11
+            // cmp rax, 0b11
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmove rax, rbx
             let mut ans = compile_to_instrs(subexpr, si, env, fnames, break_target, label);
-            ans.push(Instr::IAnd(Val::Reg(Reg::RAX), Val::Imm(1)));
-            ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(1)));
-            ans.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            ans.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            ans.push(Instr::IAnd(Val::Reg(Reg::RAX), Val::Imm(0b11)));
+            ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b11)));
+            ans.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            ans.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             ans.push(Instr::ICmove(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             ans
         }
@@ -593,8 +611,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // mov rsi, {INVALID_ARGUMENT_ERROR}
             // jne throw_error
             // cmp rax, [rsp - stack_offset]
-            // mov rbx, 3
-            // mov rax, 1
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmove rax, rbx
             e1_instrs.push(Instr::IMov(Val::RegOffset(Reg::RSP, stack_offset), Val::Reg(Reg::RAX)));
             e1_instrs.append(&mut e2_instrs);
@@ -604,8 +622,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             e1_instrs.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
             e1_instrs.push(Instr::IJne("throw_error".to_string()));
             e1_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, stack_offset)));
-            e1_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            e1_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            e1_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            e1_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             e1_instrs.push(Instr::ICmove(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e1_instrs
         }
@@ -625,8 +643,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // jne throw_error
 
             // cmp rax, [rsp - {stack_offset}]
-            // mov rbx, 3
-            // mov rax, 1
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmovg rax, rbx
             let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
             let mut e1_instrs = compile_to_instrs(e1, si + 1, env, fnames, break_target, label);
@@ -642,8 +660,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // e2_instrs.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
             // e2_instrs.push(Instr::IJne("throw_error".to_string()));
             e2_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, stack_offset)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             e2_instrs.push(Instr::ICmovg(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
@@ -663,8 +681,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // jne throw_error
 
             // cmp rax, [rsp - {stack_offset}]
-            // mov rbx, 3
-            // mov rax, 1
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmovge rax, rbx
             let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
             let mut e1_instrs = compile_to_instrs(e1, si + 1, env, fnames, break_target, label);
@@ -680,8 +698,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // e2_instrs.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
             // e2_instrs.push(Instr::IJne("throw_error".to_string()));
             e2_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, stack_offset)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             e2_instrs.push(Instr::ICmovge(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
@@ -701,8 +719,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // jne throw_error
 
             // cmp rax, [rsp - {stack_offset}]
-            // mov rbx, 3
-            // mov rax, 1
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmovl rax, rbx
             let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
             let mut e1_instrs = compile_to_instrs(e1, si + 1, env, fnames, break_target, label);
@@ -718,8 +736,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // e2_instrs.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
             // e2_instrs.push(Instr::IJne("throw_error".to_string()));
             e2_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, stack_offset)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             e2_instrs.push(Instr::ICmovl(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
@@ -739,8 +757,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // jne throw_error
 
             // cmp rax, [rsp - {stack_offset}]
-            // mov rbx, 3
-            // mov rax, 1
+            // mov rbx, 0b111
+            // mov rax, 0b11
             // cmovle rax, rbx
             let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
             let mut e1_instrs = compile_to_instrs(e1, si + 1, env, fnames, break_target, label);
@@ -756,8 +774,8 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             // e2_instrs.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
             // e2_instrs.push(Instr::IJne("throw_error".to_string()));
             e2_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, stack_offset)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(3)));
-            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(1)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RBX), Val::Imm(0b111)));
+            e2_instrs.push(Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             e2_instrs.push(Instr::ICmovle(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
@@ -819,7 +837,7 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
         // (if <cond_expr> <then_expr> <else_expr>)
         Expr::If(cond, thn, els) => {
             // {cond_instrs}
-            // cmp rax, 1
+            // cmp rax, 0b11
             // je {else_label}
             //   {thn_instrs}
             //   jmp {end_label}
@@ -831,7 +849,7 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             let mut cond_instrs = compile_to_instrs(cond, si, env, fnames, break_target, label);
             let mut thn_instrs = compile_to_instrs(thn, si, env, fnames, break_target, label);
             let mut els_instrs = compile_to_instrs(els, si, env, fnames, break_target, label);
-            cond_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(1)));
+            cond_instrs.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b11)));
             cond_instrs.push(Instr::IJe(else_label.clone()));
             cond_instrs.append(&mut thn_instrs);
             cond_instrs.push(Instr::IJmp(end_label.clone()));
@@ -977,6 +995,74 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             );
             ans
         }
+        // (tuple vec![<expr>])
+        Expr::Tuple(exprs) => {
+            // store to stack
+            // {e1_instrs}
+            // mov [rsp - {(si+0) * 8}], rax
+            // {e2_instrs}
+            // mov [rsp - {(si+1) * 8}], rax
+            // {e3_instrs}
+            // mov [rsp - {(si+2) * 8}], rax
+            // ...
+
+            // store to heap
+            // mov [r15], {size}
+            // mov rbx, [rsp - {(si+0) * 8}]
+            // mov [r15 + 8 * 1], rbx
+            // mov rbx, [rsp - {(si+1) * 8}]
+            // mov [r15 + 8 * 2], rbx
+            // ...
+
+            // store addr to rax, move forward heap base
+            // mov rax, r15
+            // add rax, 1
+            // add r15, {allocated_size * 16}
+
+            // store elements to stack
+            let size = exprs.len() as i32;
+            let mut stack_bias = 0;
+            let mut ans = Vec::<Instr>::new();
+            for e in exprs {
+                ans.append(&mut compile_to_instrs(e, si + stack_bias, env, fnames, break_target, label));
+                ans.push(Instr::IMov(Val::RegOffset(Reg::RSP, (si + stack_bias) * 8), Val::Reg(Reg::RAX)));
+                stack_bias += 1;
+            }
+
+            // store size to heap
+            ans.push(Instr::IMov(Val::RegOffset(Reg::R15, 0), Val::Imm(size as i64)));
+
+            // store elements to heap
+            for heap_index in 1..=size {
+                ans.append(&mut vec![
+                    Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RSP, (si+heap_index-1) * 8)),
+                    Instr::IMov(Val::RegOffset(Reg::R15, -8 * heap_index), Val::Reg(Reg::RBX)),
+                ]);
+            }
+
+            // store r15 to rax, move forward r15
+            let allocated_size;
+            if size & 1 == 1 {
+                allocated_size = (size + 1) / 2;
+            } else {
+                allocated_size = size / 2 + 1;
+            }
+            ans.append(&mut vec![
+                Instr::IMov(Val::Reg(Reg::RAX), Val::Reg(Reg::R15)),
+                Instr::IAdd(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IAdd(Val::Reg(Reg::R15), Val::Imm(allocated_size as i64 * 16)),
+            ]);
+            ans
+        }
+        // (index var_expr idx_expr)
+        Expr::Index(var_expr, idx_expr) => {
+            // TODO: implement index
+            compile_to_instrs(var_expr, si, env, fnames, break_target, label);
+            compile_to_instrs(idx_expr, si, env, fnames, break_target, label);
+            vec![]
+        }
+        // nil (mov rax, 0b01)
+        Expr::Nil => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b01))],
         // unreachable
         // _ => panic!("compile error")
     }
@@ -1041,7 +1127,7 @@ fn val_to_str(v : &Val) -> String {
         Val::Imm(n) => format!("{}", *n),
         Val::Reg(reg) => reg_to_str(reg),
         Val::RegOffset(reg, offset) =>
-            format!("[{} - {}]", reg_to_str(reg), *offset),
+            format!("QWORD [{} - {}]", reg_to_str(reg), *offset),
         // unreachable
         // _ => panic!("Invalid: no matched value")
     }
@@ -1054,6 +1140,7 @@ fn reg_to_str(r : &Reg) -> String {
         Reg::RSP => format!("rsp"),
         Reg::RDI => format!("rdi"),
         Reg::RSI => format!("rsi"),
+        Reg::R15 => format!("r15"),
         // unreachable
         // _ => panic!("Invalid: no matched register")
     }
@@ -1140,6 +1227,8 @@ throw_error:
 {}
 ; main
 our_code_starts_here:
+  ; ensure heap ptr is in r15
+  mov r15, rsi
 {}
   ret
 ",

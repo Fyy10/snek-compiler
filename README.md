@@ -36,8 +36,9 @@ An x86_64 compiler for snek language.
     | (loop <expr>)
     | (break <expr>)
     | (<name> <expr>*)
-    | (tuple <expr>+)
-    | (index <expr> <expr>)
+    | (tuple <expr>+) (new)
+    | (index <expr> <expr>) (new)
+    | nil (new)
 
 <op1> := add1 | sub1 | isnum | isbool | print
 <op2> := + | - | * | < | > | >= | <= | =
@@ -163,7 +164,7 @@ The executable is generated in `tests/example.run`.
 
 ## Testing
 
-Write test files (`.snek` files) in the `tests` directory and then run:
+Write test files (`.snek` files) in the `tests` directory, add entries in `tests/all_tests.rs`, and then run:
 
 ```bash
 make test

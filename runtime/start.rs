@@ -6,16 +6,32 @@ extern "C" {
     // it does not add an underscore in front of the name.
     // Courtesy of Max New (https://maxsnew.com/teaching/eecs-483-fa22/hw_adder_assignment.html)
     #[link_name = "\x01our_code_starts_here"]
-    fn our_code_starts_here(input: u64) -> u64;
+    fn our_code_starts_here(input: u64, buffer: *mut u64) -> u64;
+}
+
+fn snek_str(i : u64) -> String {
+    if i & 1 == 0 { format!("{}", (i as i64) >> 1) }
+    else if i == 0b111 { "true".to_string() }
+    else if i == 0b11 { "false".to_string() }
+    else if i == 0b1 { "nil".to_string() }
+    else if i & 3 == 1 {
+        let mut tuple_str = String::from("(tuple");
+        let addr = (i - 1) as *const u64;
+        let size = unsafe { *addr };
+        for idx in 1..=size {
+            let e = unsafe { *addr.offset(idx as isize) };
+            tuple_str.push_str(&format!(" {}", snek_str(e)));
+        }
+        tuple_str.push_str(&format!(")"));
+        tuple_str
+    }
+    else { format!("unknown {}", i) }
 }
 
 #[no_mangle]
 #[export_name = "\x01snek_print"]
 fn snek_print(i : u64) {
-    if i & 1 == 0 { println!("{}", (i as i64) >> 1); }
-    else if i == 3 { println!("true"); }
-    else if i == 1 { println!("false"); }
-    else { println!("unknown {}", i); }
+    println!("{}", snek_str(i));
 }
 
 #[no_mangle]
@@ -32,10 +48,10 @@ fn snek_error(errcode: i64) {
 
 fn parse_input(input: &str) -> u64 {
     // parse the input string into internal value representation
-    // 0b0011 for "true"
-    if input == "true" { 3 }
-    // 0b0001 for "false"
-    else if input == "false" { 1 }
+    // 0b0111 for "true"
+    if input == "true" { 0b111 }
+    // 0b0011 for "false"
+    else if input == "false" { 0b11 }
     // other (may be number or invalid string)
     else {
         // input.parse::<u64>().unwrap() << 1
@@ -57,7 +73,11 @@ fn main() {
     let input = if args.len() == 2 { &args[1] } else { "false" };
     let input = parse_input(&input);
 
-    let i: u64 = unsafe { our_code_starts_here(input) };
+    let heap_size = 100000;
+    let mut memory = Vec::<u64>::with_capacity(heap_size);
+    let buffer : *mut u64 = memory.as_mut_ptr();
+
+    let i: u64 = unsafe { our_code_starts_here(input, buffer) };
     // println!("{i}");
     snek_print(i);
 }

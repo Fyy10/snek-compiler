@@ -154,6 +154,22 @@ success_tests! {
         file: "fun_no_arg.snek",
         expected: "10086",
     },
+    {
+        name: tuple_simple,
+        file: "tuple_simple.snek",
+        expected: "(tuple 1 (tuple 2 3) 4 (tuple 5 6 7 8))",
+    },
+    {
+        name: tuple_binding,
+        file: "tuple_binding.snek",
+        expected: "(tuple (tuple (tuple 1 2 3) (tuple 1 2 3)) (tuple (tuple 1 2 3) (tuple 1 2 3)) (tuple (tuple 1 2 3) (tuple 1 2 3)))",
+    },
+    {
+        name: tuple_range_3,
+        file: "tuple_range.snek",
+        input: "3",
+        expected: "(tuple 3 (tuple 2 (tuple 1 0)))",
+    },
 }
 
 runtime_error_tests! {

@@ -1,0 +1,5 @@
+(
+    let
+    ((x (tuple 1 2 3)) (y (tuple x x)) (z (tuple y y y)))
+    z
+)
