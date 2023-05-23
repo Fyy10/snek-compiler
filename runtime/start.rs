@@ -39,8 +39,9 @@ fn snek_print(i : u64) {
 fn snek_error(errcode: i64) {
     // print error message according to writeup
     match errcode {
-        1 => eprintln!("Error: invalid argument"),
+        1 => eprintln!("Error: invalid argument (type error)"),
         2 => eprintln!("Error: overflow"),
+        3 => eprintln!("Error: index out of bound"),
         _ => eprintln!("an unknown error occurred, error code {errcode}")
     }
     std::process::exit(1);

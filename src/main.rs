@@ -12,6 +12,7 @@ use regex::Regex;
 // runtime error codes
 const INVALID_ARGUMENT_ERROR : i64 = 1;
 const OVERFLOW_ERROR : i64 = 2;
+const INDEX_BOUND_ERROR : i64 = 3;
 
 #[derive(Debug)]
 enum Val {
@@ -40,9 +41,12 @@ enum Instr {
     IXor(Val, Val),
     ITest(Val, Val),
     IJe(String),
+    IJle(String),
     IJne(String),
     IJmp(String),
     IJo(String),
+    // IJz(String),
+    IJnz(String),
     ICmp(Val, Val),
     ICmove(Val, Val),
     ICmovg(Val, Val),
@@ -263,10 +267,8 @@ fn parse_expr(s : &Sexp) -> Expr {
                     Expr::Call(fname.to_string(), arg_exprs)
                 }
                 // (tuple vec![expr..])
-                [Sexp::Atom(S(word)), exprs @ ..] if word == "tuple" => {
-                    // same as parsing block expr
-                    Expr::Tuple(parse_block(exprs))
-                }
+                [Sexp::Atom(S(word)), exprs @ ..] if word == "tuple" =>
+                    Expr::Tuple(parse_tuple(exprs)),
                 // (index var_expr, idx_expr)
                 [Sexp::Atom(S(word)), var_expr, idx_expr] if word == "index" =>
                     Expr::Index(Box::new(parse_expr(var_expr)), Box::new(parse_expr(idx_expr))),
@@ -387,6 +389,17 @@ fn parse_block(exprs : &[Sexp]) -> Vec<Expr> {
     ans
 }
 
+fn parse_tuple(exprs : &[Sexp]) -> Vec<Expr> {
+    let mut ans = Vec::<Expr>::new();
+    for e in exprs {
+        ans.push(parse_expr(e));
+    }
+    if ans.len() == 0 {
+        panic!("Invalid: empty tuple")
+    }
+    ans
+}
+
 /// return a new label "{s}_{l}"
 fn new_label(l : &mut i32, s : &str) -> String {
     let current = *l;
@@ -398,16 +411,33 @@ fn new_label(l : &mut i32, s : &str) -> String {
 fn check_rax_isnum_instrs() -> Vec<Instr> {
     // check value
     // mov rsi, {INVALID_ARGUMENT_ERROR}
-    // cmp rax, 0b111
-    // je throw_error
-    // cmp rax, 0b011
-    // je throw_error
+    // test rax, 0b01
+    // jnz throw_error
     let mut ans = Vec::<Instr>::new();
-    ans.push(Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)));
-    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b111)));
-    ans.push(Instr::IJe("throw_error".to_string()));
-    ans.push(Instr::ICmp(Val::Reg(Reg::RAX), Val::Imm(0b011)));
-    ans.push(Instr::IJe("throw_error".to_string()));
+    ans.append(&mut vec![
+        Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)),
+        Instr::ITest(Val::Reg(Reg::RAX), Val::Imm(0b01)),
+        Instr::IJnz("throw_error".to_string()),
+    ]);
+    ans
+}
+
+/// check if rax is an address, if not, call throw_error with INVALID_ARGUMENT_ERROR
+fn check_rax_isaddr_instrs() -> Vec<Instr> {
+    // check tag
+    // mov rsi, {INVALID_ARGUMENT_ERROR}
+    // mov rbx, rax
+    // and rbx, 0b11
+    // cmp rbx, 1
+    // jne throw_error
+    let mut ans = Vec::<Instr>::new();
+    ans.append(&mut vec![
+        Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INVALID_ARGUMENT_ERROR)),
+        Instr::IMov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)),
+        Instr::IAnd(Val::Reg(Reg::RBX), Val::Imm(0b11)),
+        Instr::ICmp(Val::Reg(Reg::RBX), Val::Imm(1)),
+        Instr::IJne("throw_error".to_string()),
+    ]);
     ans
 }
 
@@ -1056,10 +1086,49 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
         }
         // (index var_expr idx_expr)
         Expr::Index(var_expr, idx_expr) => {
-            // TODO: implement index
-            compile_to_instrs(var_expr, si, env, fnames, break_target, label);
-            compile_to_instrs(idx_expr, si, env, fnames, break_target, label);
-            vec![]
+            // idx_expr_instrs
+            // {check_rax_isnum_instrs}
+            // sar rax, 1       ; rax stores idx
+            // mov [rsp - {si * 8}], rax
+            // var_expr_instrs
+            // {check_rax_isaddr_instrs}
+            // sub rax, 1       ; rax stores tuple address
+            // mov rbx, [rax]   ; rbx stores tuple size
+            // mov rsi, {INDEX_BOUND_ERROR}
+            // cmp rbx, [rsp - {si * 8}]
+            // jle throw_error
+            // cmp [rsp - {si * 8}], -1
+            // jle throw_error
+            // mov rbx, rax     ; rbx stores tuple address
+            // mov rax, [rsp - {si * 8}] ; rax stores idx
+            // add rax, 1
+            // imul rax, 8
+            // add rbx, rax     ; rbx stores base address + offset
+            // mov rax, [rbx]
+            let mut ans = compile_to_instrs(idx_expr, si, env, fnames, break_target, label);
+            ans.append(&mut check_rax_isnum_instrs());
+            ans.append(&mut vec![
+                Instr::ISar(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMov(Val::RegOffset(Reg::RSP, si * 8), Val::Reg(Reg::RAX)),
+            ]);
+            ans.append(&mut compile_to_instrs(var_expr, si + 1, env, fnames, break_target, label));
+            ans.append(&mut check_rax_isaddr_instrs());
+            ans.append(&mut vec![
+                Instr::ISub(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RAX, 0)),
+                Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INDEX_BOUND_ERROR)),
+                Instr::ICmp(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RSP, si * 8)),
+                Instr::IJle("throw_error".to_string()),
+                Instr::ICmp(Val::RegOffset(Reg::RSP, si * 8), Val::Imm(-1)),
+                Instr::IJle("throw_error".to_string()),
+                Instr::IMov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)),
+                Instr::IMov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, si * 8)),
+                Instr::IAdd(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMul(Val::Reg(Reg::RAX), Val::Imm(8)),
+                Instr::IAdd(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)),
+                Instr::IMov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBX, 0)),
+            ]);
+            ans
         }
         // nil (mov rax, 0b01)
         Expr::Nil => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b01))],
@@ -1086,12 +1155,18 @@ fn instr_to_str(i : &Instr) -> String {
             format!("test {}, {}", val_to_str(v1), val_to_str(v2)),
         Instr::IJe(target) =>
             format!("je {}", target),
+        Instr::IJle(target) =>
+            format!("jle {}", target),
         Instr::IJne(target) =>
             format!("jne {}", target),
         Instr::IJmp(target) =>
             format!("jmp {}", target),
         Instr::IJo(target) =>
             format!("jo {}", target),
+        // Instr::IJz(target) =>
+        //     format!("jz {}", target),
+        Instr::IJnz(target) =>
+            format!("jnz {}", target),
         Instr::ICmp(v1, v2) =>
             format!("cmp {}, {}", val_to_str(v1), val_to_str(v2)),
         Instr::ICmove(v1, v2) =>

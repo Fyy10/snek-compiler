@@ -170,6 +170,11 @@ success_tests! {
         input: "3",
         expected: "(tuple 3 (tuple 2 (tuple 1 0)))",
     },
+    {
+        name: index_print,
+        file: "index_print.snek",
+        expected: "(tuple 0 1 2 3)\n0\n1\n2\n3\n(tuple 0 1 2 3)",
+    },
 }
 
 runtime_error_tests! {
@@ -235,6 +240,35 @@ runtime_error_tests! {
         name: times_of,
         file: "times_of.snek",
         expected: "overflow",
+    },
+    {
+        name: index_not_tuple_bool,
+        file: "index_not_tuple.snek",
+        input: "true",
+        expected: "invalid argument",
+    },
+    {
+        name: index_not_tuple_num,
+        file: "index_not_tuple.snek",
+        input: "10",
+        expected: "invalid argument",
+    },
+    {
+        name: index_not_num,
+        file: "index_not_num.snek",
+        expected: "invalid argument",
+    },
+    {
+        name: index_out_of_bound_3,
+        file: "index_out_of_bound.snek",
+        input: "3",
+        expected: "index out of bound",
+    },
+    {
+        name: index_out_of_bound_negative,
+        file: "index_out_of_bound.snek",
+        input: "-1",
+        expected: "index out of bound",
     },
 }
 

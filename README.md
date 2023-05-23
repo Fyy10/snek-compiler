@@ -121,6 +121,24 @@ struct Prog {
 
 `[size, val1, val2, ...]`
 
+Tuples are 0-indexed.
+
+```plain
+(
+    let
+    ((t (tuple 0 1 2 3)))
+    (
+        block
+        (index t -1) => out of bound
+        (index t 0) => 0
+        (index t 1) => 1
+        (index t 2) => 2
+        (index t 3) => 3
+        (index t 4) => out of bound
+    )
+)
+```
+
 ## Usage
 
 Create a `.snek` file in the folder `tests`, e.g., `tests/example.snek`.
