@@ -175,6 +175,16 @@ success_tests! {
         file: "index_print.snek",
         expected: "(tuple 0 1 2 3)\n0\n1\n2\n3\n(tuple 0 1 2 3)",
     },
+    {
+        name: tuple_points,
+        file: "tuple_points.snek",
+        expected: "(tuple 1 2)\n(tuple 3 4)\n(tuple 4 6)\n(tuple 4 6)",
+    },
+    {
+        name: tuple_bst,
+        file: "tuple_bst.snek",
+        expected: "true\ntrue\nfalse\nfalse\n(tuple (tuple nil -2 (tuple nil -1 nil)) 0 (tuple nil 1 (tuple nil 2 nil)))",
+    },
 }
 
 runtime_error_tests! {
@@ -326,6 +336,11 @@ static_error_tests! {
     {
         name: extra_def,
         file: "extra_def.snek",
+        expected: "Invalid",
+    },
+    {
+        name: index_wrong_args,
+        file: "index_wrong_args.snek",
         expected: "Invalid",
     },
 }

@@ -1,0 +1,26 @@
+(
+    fun
+    (point x y)
+    (tuple x y)
+)
+
+(
+    fun
+    (sump p1 p2)
+    (
+        tuple
+        (+ (index p1 0) (index p2 0))
+        (+ (index p1 1) (index p2 1))
+    )
+)
+
+(
+    let
+    ((x (point 1 2)) (y (point 3 4)))
+    (
+        block
+        (print x)
+        (print y)
+        (print (sump x y))
+    )
+)
