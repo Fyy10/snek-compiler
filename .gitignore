@@ -17,3 +17,4 @@ Cargo.lock
 tests/*.[soa]
 tests/*.run
 .vscode
+.DS_Store
