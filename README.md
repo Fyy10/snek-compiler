@@ -482,6 +482,8 @@ Test file: `tests/tuple_points.snek`
 
 Create 2 points and calculate the sum of coordinates with functions.
 
+Program output:
+
 ```plain
 $ ./tests/tuple_points.run 
 (tuple 1 2)
