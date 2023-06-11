@@ -1,0 +1,9 @@
+(
+    let
+    ((t1 (tuple 1 2)) (t2 (tuple t1 t1)))
+    (
+        block
+        (tuple-set! t1 0 t2)
+        t2
+    )
+)

@@ -1,0 +1,5 @@
+(
+    let
+    ((t (tuple 1 2)))
+    (tuple-set! t 0 t)
+)

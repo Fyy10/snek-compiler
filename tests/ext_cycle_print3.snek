@@ -1,0 +1,18 @@
+(
+    let
+    (
+        (t1 (tuple 1 2 3 4))
+        (t2 (tuple -1 -2 -3))
+        (t3 (tuple 0 t1 t2))
+    )
+    (
+        block
+        (print t3)
+        (tuple-set! t1 0 t3)
+        (tuple-set! t3 0 t3)
+        (print t3)
+        (tuple-set! t3 0 true)
+        (tuple-set! t1 0 false)
+        t3
+    )
+)

@@ -190,6 +190,21 @@ success_tests! {
         file: "ext_tuple_set.snek",
         expected: "(tuple 1 2 3)\n(tuple 1 (tuple 4 5) 3)\n(tuple 1 (tuple (tuple 1 2) 5) 3)",
     },
+    {
+        name: ext_cycle_print1,
+        file: "ext_cycle_print1.snek",
+        expected: "(tuple (...) 2)",
+    },
+    {
+        name: ext_cycle_print2,
+        file: "ext_cycle_print2.snek",
+        expected: "(tuple (tuple (...) 2) (tuple (...) 2))",
+    },
+    {
+        name: ext_cycle_print3,
+        file: "ext_cycle_print3.snek",
+        expected: "(tuple 0 (tuple 1 2 3 4) (tuple -1 -2 -3))\n(tuple (...) (tuple (...) 2 3 4) (tuple -1 -2 -3))\n(tuple true (tuple false 2 3 4) (tuple -1 -2 -3))",
+    },
 }
 
 runtime_error_tests! {

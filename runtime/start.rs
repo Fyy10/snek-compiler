@@ -9,20 +9,29 @@ extern "C" {
     fn our_code_starts_here(input: u64, buffer: *mut u64) -> u64;
 }
 
-fn snek_str(i : u64) -> String {
+fn snek_str(i : u64, seen : &mut Vec<u64>) -> String {
     if i & 1 == 0 { format!("{}", (i as i64) >> 1) }
     else if i == 0b111 { "true".to_string() }
     else if i == 0b11 { "false".to_string() }
     else if i == 0b1 { "nil".to_string() }
     else if i & 3 == 1 {
+        // deal with cyclic values
+        if seen.contains(&i) {
+            return "(...)".to_string()
+        } else {
+            seen.push(i);
+        }
+
         let mut tuple_str = String::from("(tuple");
         let addr = (i - 1) as *const u64;
         let size = unsafe { *addr };
         for idx in 1..=size {
             let e = unsafe { *addr.offset(idx as isize) };
-            tuple_str.push_str(&format!(" {}", snek_str(e)));
+            tuple_str.push_str(&format!(" {}", snek_str(e, seen)));
         }
         tuple_str.push_str(&format!(")"));
+
+        seen.pop();
         tuple_str
     }
     else { format!("unknown {}", i) }
@@ -31,7 +40,7 @@ fn snek_str(i : u64) -> String {
 #[no_mangle]
 #[export_name = "\x01snek_print"]
 fn snek_print(i : u64) {
-    println!("{}", snek_str(i));
+    println!("{}", snek_str(i, &mut Vec::<u64>::new()));
 }
 
 #[no_mangle]
@@ -45,6 +54,16 @@ fn snek_error(errcode: i64) {
         _ => eprintln!("an unknown error occurred, error code {errcode}")
     }
     std::process::exit(1);
+}
+
+#[no_mangle]
+#[export_name = "\x01snek_equal"]
+// TODO: snek_equal
+fn snek_equal(t1 : u64, t2 : u64) -> u64 {
+    // TODO: structural equality of t1 and t2
+    println!("{:#x}, {:#x}", t1, t2);
+    // false
+    0b11
 }
 
 fn parse_input(input: &str) -> u64 {
