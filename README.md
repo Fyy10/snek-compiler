@@ -9,7 +9,11 @@
         - [If statement](#if-statement)
         - [Loop and block](#loop-and-block)
         - [Function](#function)
-        - [Tuple and index (new)](#tuple-and-index-new)
+        - [Tuple and index](#tuple-and-index)
+        - [Tuple modification (new)](#tuple-modification-new)
+          - [Handle cyclic values](#handle-cyclic-values)
+        - [Equality (new)](#equality-new)
+          - [Handle cyclic equality](#handle-cyclic-equality)
     - [Abstract Syntax (in Rust)](#abstract-syntax-in-rust)
     - [Data Representations](#data-representations)
       - [Tuple structure in heap](#tuple-structure-in-heap)
@@ -26,6 +30,9 @@
       - [Index wrong args](#index-wrong-args)
       - [Functions with tuples](#functions-with-tuples)
       - [Binary search tree (insert \& search)](#binary-search-tree-insert--search)
+      - [Equality tests (new)](#equality-tests-new)
+      - [Cyclic print (new)](#cyclic-print-new)
+      - [Cyclic equality (new)](#cyclic-equality-new)
   - [References \& Credits](#references--credits)
 
 An x86_64 compiler for snek language.
@@ -52,12 +59,13 @@ An x86_64 compiler for snek language.
     | (loop <expr>)
     | (break <expr>)
     | (<name> <expr>*)
-    | (tuple <expr>+) (new)
-    | (index <expr> <expr>) (new)
-    | nil (new)
+    | (tuple <expr>+)
+    | (index <expr> <expr>)
+    | nil
+    | (tuple-set! <expr> <expr> <expr>) (new)
 
 <op1> := add1 | sub1 | isnum | isbool | print
-<op2> := + | - | * | < | > | >= | <= | =
+<op2> := + | - | * | < | > | >= | <= | = | == (new)
 
 <binding> := (<identifier> <expr>)
 ```
@@ -126,7 +134,7 @@ An x86_64 compiler for snek language.
 (fname 2 3) => 5
 ```
 
-##### Tuple and index (new)
+##### Tuple and index
 
 Tuple expressions are in the form as follows:
 
@@ -160,6 +168,114 @@ Example using tuple and index:
 )
 ```
 
+##### Tuple modification (new)
+
+Use the `tuple-set!` keyword to modify a tuple with index and value, return the tuple.
+
+```plain
+(tuple-set! t idx val)
+```
+
+Where `t` should be a tuple expr, `idx` should be a number expr, and `val` could be any valid expr. The program checks the type dynamically and throws `index out of bound` if it happens.
+
+If a tuple becomes cyclic after modification, the printed value would be `(...)`:
+
+```plain
+(
+    let
+    ((t (tuple 1 2)))
+    (tuple-set! t 0 t) => (tuple (...) 2)
+)
+```
+
+###### Handle cyclic values
+
+Use a vector `seen` to keep track of visited values. If the value has been visited before, print `(...)` instead.
+
+```rust
+// in snek_str(), i is a snek tuple
+// deal with cyclic values
+if seen.contains(&i) {
+    return "(...)".to_string()
+} else {
+    seen.push(i);
+}
+
+let mut tuple_str = String::from("(tuple");
+let addr = (i - 1) as *const u64;
+let size = unsafe { *addr };
+for idx in 1..=size {
+    let e = unsafe { *addr.offset(idx as isize) };
+    tuple_str.push_str(&format!(" {}", snek_str(e, seen)));
+}
+tuple_str.push_str(&format!(")"));
+
+seen.pop();
+tuple_str
+```
+
+##### Equality (new)
+
+The `==` operator compares the structural equality of two tuples and `=` checks the reference equality if the two arguments are both tuples.
+
+```plain
+(
+    let
+    ((t1 (tuple 1 2)) (t2 (tuple 1 2)))
+    (
+        block
+        (= t1 t1) => true
+        (== t1 t1) => true
+        (= t1 t2) => false
+        (== t1 t2) => true
+        (= t1 1) => type error
+        (== t1 1) => type error
+    )
+)
+```
+
+The `==` expression raises an error if any of the two arguments is not a tuple.
+
+###### Handle cyclic equality
+
+Use a vector of pairs to keep track of the visited pairs of values to be compared. If the two values have already been visited before, return `true` (we are comparing the same pair again).
+
+```rust
+fn snek_eq(t1 : u64, t2 : u64, seen : &mut Vec<(u64, u64)>) -> bool {
+    // deal with cyclic values
+    if seen.contains(&(t1, t2)) {
+        return true
+    } else {
+        seen.push((t1, t2));
+    }
+
+    let mut is_eq = true;
+    let addr1 = (t1 - 1) as *const u64;
+    let addr2 = (t2 - 1) as *const u64;
+    let size1 = unsafe { *addr1 };
+    let size2 = unsafe { *addr2 };
+    if size1 != size2 { return false }
+    for idx in 1..=size1 {
+        let e1 = unsafe { *addr1.offset(idx as isize) };
+        let e2 = unsafe { *addr2.offset(idx as isize) };
+        if e1 != e2 {
+            if (e1 & 0b11 != 1) || (e2 & 0b11 != 1) {
+                is_eq = false;
+                break
+            } else {
+                if !snek_eq(e1, e2, seen) {
+                    is_eq = false;
+                    break
+                }
+            }
+        }
+    }
+
+    seen.pop();
+    is_eq
+}
+```
+
 ### Abstract Syntax (in Rust)
 
 ```rust
@@ -180,6 +296,7 @@ enum Op2 {
     GreaterEqual,
     Less,
     LessEqual,
+    StructEqual, // new
 }
 
 enum Expr {
@@ -198,10 +315,11 @@ enum Expr {
     Block(Vec<Expr>),
     Print(Box<Expr>),
     Call(String, Vec<Expr>),
+    Tuple(Vec<Expr>),
+    Index(Box<Expr>, Box<Expr>),
+    Nil,
 
-    Tuple(Vec<Expr>), // (new)
-    Index(Box<Expr>, Box<Expr>), // (new)
-    Nil, // (new)
+    TupleSet(Box<Expr>, Box<Expr>, Box<Expr>), // new
 }
 
 enum Def {
@@ -578,6 +696,224 @@ false
 false
 (tuple (tuple nil -2 (tuple nil -1 nil)) 0 (tuple nil 1 (tuple nil 2 nil)))
 ```
+
+#### Equality tests (new)
+
+Test file: `tests/ext_equal.snek`
+
+```plain
+(
+    let
+    (
+        (t1 (tuple 1 2))
+        (t2 (tuple 1 2))
+        (t3 (tuple 2 3))
+    )
+    (
+        block
+        (print (= t1 t1))
+        (print (== t1 t1))
+        (print (= t1 t2))
+        (print (== t1 t2))
+        (print (== t1 t3))
+        (== t2 t3)
+    )
+)
+```
+
+The test file demonstrates the difference between reference equality (`=`) and structural equality (`==`).
+
+Program output:
+
+```plain
+$ ./tests/ext_equal.run 
+true
+true
+false
+true
+false
+false
+```
+
+#### Cyclic print (new)
+
+Test file: `tests/ext_cycle_print1.snek`
+
+```plain
+(
+    let
+    ((t (tuple 1 2)))
+    (tuple-set! t 0 t)
+)
+```
+
+Variable `t` is set to `(tuple t 2)`.
+
+Program output:
+
+```plain
+$ ./tests/ext_cycle_print1.run 
+(tuple (...) 2)
+```
+
+Test file: `tests/ext_cycle_print2.snek`
+
+```plain
+(
+    let
+    ((t1 (tuple 1 2)) (t2 (tuple t1 t1)))
+    (
+        block
+        (tuple-set! t1 0 t2)
+        t2
+    )
+)
+```
+
+Variable `t2` is set to `(tuple t1 t1)`, while `t1` becomes `(tuple t2 2)`.
+
+Program output:
+
+```plain
+$ ./tests/ext_cycle_print2.run 
+(tuple (tuple (...) 2) (tuple (...) 2))
+```
+
+Test file: `tests/ext_cycle_print3.snek`
+
+```plain
+(
+    let
+    (
+        (t1 (tuple 1 2 3 4))
+        (t2 (tuple -1 -2 -3))
+        (t3 (tuple 0 t1 t2))
+    )
+    (
+        block
+        (print t3)
+        (tuple-set! t1 0 t3)
+        (tuple-set! t3 0 t3)
+        (print t3)
+        (tuple-set! t3 0 true)
+        (tuple-set! t1 0 false)
+        t3
+    )
+)
+```
+
+Make a tuple cyclic, print it, and then set it back to non-cyclic.
+
+```plain
+$ ./tests/ext_cycle_print3.run 
+(tuple 0 (tuple 1 2 3 4) (tuple -1 -2 -3))
+(tuple (...) (tuple (...) 2 3 4) (tuple -1 -2 -3))
+(tuple true (tuple false 2 3 4) (tuple -1 -2 -3))
+```
+
+#### Cyclic equality (new)
+
+Test file: `tests/ext_cycle_equal1.snek`
+
+```plain
+(
+    let
+    (
+        (x (tuple 1 2))
+        (y (tuple 1 2))
+    )
+    (
+        block
+        (tuple-set! x 0 x)
+        (tuple-set! y 0 y)
+        (print x)
+        (print y)
+        (== x y)
+    )
+)
+```
+
+`x = (tuple x 2)` and `y = (tuple y 2)` are both cyclic values, and they are structurally equal.
+
+Program output:
+
+```plain
+$ ./tests/ext_cycle_equal1.run 
+(tuple (...) 2)
+(tuple (...) 2)
+true
+```
+
+Test file: `tests/ext_cycle_equal2.snek`
+
+```plain
+(
+    let
+    (
+        (x (tuple 1 2))
+        (y (tuple 1 2))
+        (z (tuple 1 x))
+    )
+    (
+        block
+        (tuple-set! x 0 x)
+        (tuple-set! y 0 x)
+        (print x)
+        (print y)
+        (== x y)
+    )
+)
+```
+
+`x = (tuple x 2)` and `y = (tuple x 2)` are both cyclic values, and they are structurally equal.
+
+Program output:
+
+```plain
+$ ./tests/ext_cycle_equal2.run 
+(tuple (...) 2)
+(tuple (tuple (...) 2) 2)
+true
+```
+
+Note that the printed results of `x` and `y` are not the same, but they are actually structurally equal, indicating that we can't use the printed string for comparing structural equality.
+
+Test file: `tests/ext_cycle_equal3.snek`
+
+```plain
+(
+    let
+    (
+        (x (tuple 1 1))
+        (y (tuple 1 1))
+        (z (tuple x 2))
+        (w (tuple y 2))
+    )
+    (
+        block
+        (tuple-set! x 0 z)
+        (tuple-set! y 0 y)
+        (print z)
+        (print w)
+        (== z w)
+    )
+)
+```
+
+The structure of the constructed cyclic tuples are shown in the following figure.
+
+![ext_cycle_equal3](img/ext_cycle_equal3.svg)
+
+Program output:
+
+```plain
+$ ./tests/ext_cycle_equal3.run 
+(tuple (tuple (...) 1) 2)
+(tuple (tuple (...) 1) 2)
+false
+```
+
+Note that the printed strings are the same for `z` and `w`, but they are not structurally equal.
 
 ## References & Credits
 
