@@ -185,6 +185,11 @@ success_tests! {
         file: "tuple_bst.snek",
         expected: "true\ntrue\nfalse\nfalse\n(tuple (tuple nil -2 (tuple nil -1 nil)) 0 (tuple nil 1 (tuple nil 2 nil)))",
     },
+    {
+        name: ext_tuple_set,
+        file: "ext_tuple_set.snek",
+        expected: "(tuple 1 2 3)\n(tuple 1 (tuple 4 5) 3)\n(tuple 1 (tuple (tuple 1 2) 5) 3)",
+    },
 }
 
 runtime_error_tests! {

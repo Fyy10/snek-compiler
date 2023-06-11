@@ -1,0 +1,16 @@
+(
+    let
+    ((t (tuple 1 2 3)))
+    (
+        block
+        (print t)
+        (tuple-set! t 1 (tuple 4 5))
+        (print t)
+        (
+            let
+            ((t1 (index t 1)))
+            (tuple-set! t1 0 (tuple 1 2))
+        )
+        t
+    )
+)

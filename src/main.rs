@@ -82,6 +82,7 @@ enum Op2 {
     GreaterEqual,
     Less,
     LessEqual,
+    StructEqual,
 }
 
 #[derive(Debug)]
@@ -112,10 +113,11 @@ enum Expr {
     Block(Vec<Expr>),
     Print(Box<Expr>),
     Call(String, Vec<Expr>),
-
     Tuple(Vec<Expr>),
     Index(Box<Expr>, Box<Expr>),
     Nil,
+
+    TupleSet(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 /// check if the expression is a function definition
@@ -235,6 +237,8 @@ fn parse_expr(s : &Sexp) -> Expr {
                     Expr::BinOp(Op2::Less, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
                 [Sexp::Atom(S(op)), e1, e2] if op == "<=" =>
                     Expr::BinOp(Op2::LessEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
+                [Sexp::Atom(S(op)), e1, e2] if op == "==" =>
+                    Expr::BinOp(Op2::StructEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
                 // let
                 // (let ((x 10)) (add1 x))
                 // (let ((x 10) (y 2)) (+ x y))
@@ -269,9 +273,12 @@ fn parse_expr(s : &Sexp) -> Expr {
                 // (tuple vec![expr..])
                 [Sexp::Atom(S(word)), exprs @ ..] if word == "tuple" =>
                     Expr::Tuple(parse_tuple(exprs)),
-                // (index var_expr, idx_expr)
+                // (index var_expr idx_expr)
                 [Sexp::Atom(S(word)), var_expr, idx_expr] if word == "index" =>
                     Expr::Index(Box::new(parse_expr(var_expr)), Box::new(parse_expr(idx_expr))),
+                // (tuple-set! tup_expr idx_expr val_expr)
+                [Sexp::Atom(S(word)), tup_expr, idx_expr, val_expr] if word == "tuple-set!" =>
+                    Expr::TupleSet(Box::new(parse_expr(tup_expr)), Box::new(parse_expr(idx_expr)), Box::new(parse_expr(val_expr))),
                 _ => panic!("Invalid: parse error")
             }
         // variable or keyword
@@ -309,6 +316,7 @@ fn is_reserved(name : String) -> bool {
         "<=",
         ">=",
         "=",
+        "==",
         "let",
         "true",
         "false",
@@ -323,6 +331,7 @@ fn is_reserved(name : String) -> bool {
         "tuple",
         "index",
         "nil",
+        "tuple-set!",
     ];
     if names.contains(&name.as_str()) {
         return true;
@@ -809,6 +818,39 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             e2_instrs.push(Instr::ICmovle(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
+        // TODO: ==
+        Expr::BinOp(Op2::StructEqual, e1, e2) => {
+            // TODO: save rdi
+            // TODO: save rsi
+            // {e1_instrs}
+            // {check_rax_isaddr_instrs}
+            // mov rdi, rax
+            // {e2_instrs}
+            // {check_rax_isaddr_instrs}
+            // mov rsi, rax
+            // sub rsp, {offset}
+            // call snek_equal
+            // TODO: restore rdi
+            // TODO: restore rsi
+            // add rsp, {offset}
+
+            let mut e1_instrs = compile_to_instrs(e1, si, env, fnames, break_target, label);
+            // results are not in the stack, we don't need si + 1 here
+            let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
+
+            // TODO: save rdi and rsi first
+            let mut ans = vec![];
+            ans.append(&mut e1_instrs);
+            ans.append(&mut check_rax_isaddr_instrs());
+            ans.push(Instr::IMov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
+            ans.append(&mut e2_instrs);
+            ans.append(&mut check_rax_isaddr_instrs());
+            ans.append(&mut vec![
+                Instr::IMov(Val::Reg(Reg::RSI), Val::Reg(Reg::RAX)),
+                // TODO: the rest
+            ]);
+            ans
+        }
         // let: variable name to value
         Expr::Id(name) => {
             // check if variable has been defined
@@ -1132,6 +1174,64 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
         }
         // nil (mov rax, 0b01)
         Expr::Nil => vec![Instr::IMov(Val::Reg(Reg::RAX), Val::Imm(0b01))],
+        // (tuple-set! tup_expr idx_expr val_expr)
+        Expr::TupleSet(tup_expr, idx_expr, val_expr) => {
+            // idx_expr_instrs
+            // {check_rax_isnum_instrs}
+            // sar rax, 1       ; rax stores idx
+            // mov [rsp - {si * 8}], rax
+            // tup_expr_instrs
+            // {check_rax_isaddr_instrs}
+            // mov [rsp - {(si+1) * 8}], rax
+            // sub rax, 1       ; rax stores tuple address
+            // mov rbx, [rax]   ; rbx stores tuple size
+            // mov rsi, {INDEX_BOUND_ERROR}
+            // cmp rbx, [rsp - {si * 8}]
+            // jle throw_error
+            // cmp [rsp - {si * 8}], -1
+            // jle throw_error
+            // mov rbx, rax     ; rbx stores tuple address
+            // mov rax, [rsp - {si * 8}] ; rax stores idx
+            // add rax, 1
+            // imul rax, 8
+            // add rbx, rax     ; rbx stores base address + offset
+            // mov [rsp - {si * 8}], rbx
+            // {val_instrs}
+            // mov rbx, [rsp - {si * 8}]
+            // mov [rbx], rax
+            // mov rax, [rsp - {(si+1) * 8}]
+            let mut ans = compile_to_instrs(idx_expr, si, env, fnames, break_target, label);
+            ans.append(&mut check_rax_isnum_instrs());
+            ans.append(&mut vec![
+                Instr::ISar(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMov(Val::RegOffset(Reg::RSP, si * 8), Val::Reg(Reg::RAX)),
+            ]);
+            ans.append(&mut compile_to_instrs(tup_expr, si + 1, env, fnames, break_target, label));
+            ans.append(&mut check_rax_isaddr_instrs());
+            ans.append(&mut vec![
+                Instr::IMov(Val::RegOffset(Reg::RSP, (si+1) * 8), Val::Reg(Reg::RAX)),
+                Instr::ISub(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RAX, 0)),
+                Instr::IMov(Val::Reg(Reg::RSI), Val::Imm(INDEX_BOUND_ERROR)),
+                Instr::ICmp(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RSP, si * 8)),
+                Instr::IJle("throw_error".to_string()),
+                Instr::ICmp(Val::RegOffset(Reg::RSP, si * 8), Val::Imm(-1)),
+                Instr::IJle("throw_error".to_string()),
+                Instr::IMov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)),
+                Instr::IMov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, si * 8)),
+                Instr::IAdd(Val::Reg(Reg::RAX), Val::Imm(1)),
+                Instr::IMul(Val::Reg(Reg::RAX), Val::Imm(8)),
+                Instr::IAdd(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)),
+                Instr::IMov(Val::RegOffset(Reg::RSP, si * 8), Val::Reg(Reg::RBX)),
+            ]);
+            ans.append(&mut compile_to_instrs(val_expr, si + 2, env, fnames, break_target, label));
+            ans.append(&mut vec![
+                Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RSP, si * 8)),
+                Instr::IMov(Val::RegOffset(Reg::RBX, 0), Val::Reg(Reg::RAX)),
+                Instr::IMov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, (si+1) * 8)),
+            ]);
+            ans
+        }
         // unreachable
         // _ => panic!("compile error")
     }
@@ -1291,6 +1391,7 @@ section .text
 global our_code_starts_here
 extern snek_print
 extern snek_error
+extern snek_equal
 throw_error:
   ; store error code in rsi before calling throw_error
   ; we don't need to worry about rdi (input) being overwritten since our program ends here
