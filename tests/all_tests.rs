@@ -210,6 +210,21 @@ success_tests! {
         file: "ext_equal.snek",
         expected: "true\ntrue\nfalse\ntrue\nfalse\nfalse",
     },
+    {
+        name: ext_cycle_equal1,
+        file: "ext_cycle_equal1.snek",
+        expected: "(tuple (...) 2)\n(tuple (...) 2)\ntrue",
+    },
+    {
+        name: ext_cycle_equal2,
+        file: "ext_cycle_equal2.snek",
+        expected: "(tuple (...) 2)\n(tuple (tuple (...) 2) 2)\ntrue",
+    },
+    {
+        name: ext_cycle_equal3,
+        file: "ext_cycle_equal3.snek",
+        expected: "(tuple (tuple (...) 1) 2)\n(tuple (tuple (...) 1) 2)\nfalse",
+    },
 }
 
 runtime_error_tests! {

@@ -1,0 +1,16 @@
+(
+    let
+    (
+        (x (tuple 1 2))
+        (y (tuple 1 2))
+        (z (tuple 1 x))
+    )
+    (
+        block
+        (tuple-set! x 0 x)
+        (tuple-set! y 0 x)
+        (print x)
+        (print y)
+        (== x y)
+    )
+)
