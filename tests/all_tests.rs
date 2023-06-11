@@ -205,6 +205,11 @@ success_tests! {
         file: "ext_cycle_print3.snek",
         expected: "(tuple 0 (tuple 1 2 3 4) (tuple -1 -2 -3))\n(tuple (...) (tuple (...) 2 3 4) (tuple -1 -2 -3))\n(tuple true (tuple false 2 3 4) (tuple -1 -2 -3))",
     },
+    {
+        name: ext_equal,
+        file: "ext_equal.snek",
+        expected: "true\ntrue\nfalse\ntrue\nfalse\nfalse",
+    },
 }
 
 runtime_error_tests! {

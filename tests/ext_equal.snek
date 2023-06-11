@@ -1,0 +1,17 @@
+(
+    let
+    (
+        (t1 (tuple 1 2))
+        (t2 (tuple 1 2))
+        (t3 (tuple 2 3))
+    )
+    (
+        block
+        (print (= t1 t1))
+        (print (== t1 t1))
+        (print (= t1 t2))
+        (print (== t1 t2))
+        (print (== t1 t3))
+        (== t2 t3)
+    )
+)

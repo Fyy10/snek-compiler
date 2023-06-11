@@ -58,12 +58,52 @@ fn snek_error(errcode: i64) {
 
 #[no_mangle]
 #[export_name = "\x01snek_equal"]
-// TODO: snek_equal
 fn snek_equal(t1 : u64, t2 : u64) -> u64 {
-    // TODO: structural equality of t1 and t2
-    println!("{:#x}, {:#x}", t1, t2);
-    // false
-    0b11
+    // structural equality of t1 and t2
+    // snek_print(t1);
+    // snek_print(t2);
+    let is_eq = snek_eq(t1, t2, &mut Vec::<(u64, u64)>::new());
+    if is_eq {
+        // true
+        return 0b111;
+    } else {
+        // false
+        return 0b11;
+    }
+}
+
+fn snek_eq(t1 : u64, t2 : u64, seen : &mut Vec<(u64, u64)>) -> bool {
+    // deal with cyclic values
+    if seen.contains(&(t1, t2)) {
+        return true
+    } else {
+        seen.push((t1, t2));
+    }
+
+    let mut is_eq = true;
+    let addr1 = (t1 - 1) as *const u64;
+    let addr2 = (t2 - 1) as *const u64;
+    let size1 = unsafe { *addr1 };
+    let size2 = unsafe { *addr2 };
+    if size1 != size2 { return false }
+    for idx in 1..=size1 {
+        let e1 = unsafe { *addr1.offset(idx as isize) };
+        let e2 = unsafe { *addr2.offset(idx as isize) };
+        if e1 != e2 {
+            if (e1 & 0b11 != 1) || (e2 & 0b11 != 1) {
+                is_eq = false;
+                break
+            } else {
+                if !snek_eq(e1, e2, seen) {
+                    is_eq = false;
+                    break
+                }
+            }
+        }
+    }
+
+    seen.pop();
+    is_eq
 }
 
 fn parse_input(input: &str) -> u64 {

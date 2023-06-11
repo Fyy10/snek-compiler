@@ -29,6 +29,7 @@ enum Reg {
     RDI,
     RSI,
     R15,
+    RDX,
 }
 
 #[derive(Debug)]
@@ -818,36 +819,50 @@ fn compile_to_instrs(e : &Expr, si : i32, env : &HashMap<String, i32>, fnames : 
             e2_instrs.push(Instr::ICmovle(Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
             e2_instrs
         }
-        // TODO: ==
+        // ==
         Expr::BinOp(Op2::StructEqual, e1, e2) => {
-            // TODO: save rdi
-            // TODO: save rsi
             // {e1_instrs}
             // {check_rax_isaddr_instrs}
+            // mov rdx, rdi     ; rdx stores input
             // mov rdi, rax
             // {e2_instrs}
             // {check_rax_isaddr_instrs}
             // mov rsi, rax
             // sub rsp, {offset}
+            // push rdx
             // call snek_equal
-            // TODO: restore rdi
-            // TODO: restore rsi
+            // pop rdi
             // add rsp, {offset}
+
+            let idx;
+            // if si is odd, add 1 before *8 (16-byte aligned)
+            if si & 1 == 1 {
+                idx = si + 1;
+            } else {
+                idx = si;
+            }
+            let offset = idx * 8;
 
             let mut e1_instrs = compile_to_instrs(e1, si, env, fnames, break_target, label);
             // results are not in the stack, we don't need si + 1 here
             let mut e2_instrs = compile_to_instrs(e2, si, env, fnames, break_target, label);
 
-            // TODO: save rdi and rsi first
             let mut ans = vec![];
             ans.append(&mut e1_instrs);
             ans.append(&mut check_rax_isaddr_instrs());
-            ans.push(Instr::IMov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
+            ans.append(&mut vec![
+                Instr::IMov(Val::Reg(Reg::RDX), Val::Reg(Reg::RDI)),
+                Instr::IMov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)),
+            ]);
             ans.append(&mut e2_instrs);
             ans.append(&mut check_rax_isaddr_instrs());
             ans.append(&mut vec![
                 Instr::IMov(Val::Reg(Reg::RSI), Val::Reg(Reg::RAX)),
-                // TODO: the rest
+                Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset as i64)),
+                Instr::IPush(Reg::RDX),
+                Instr::Call("snek_equal".to_string()),
+                Instr::IPop(Reg::RDI),
+                Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset as i64)),
             ]);
             ans
         }
@@ -1316,6 +1331,7 @@ fn reg_to_str(r : &Reg) -> String {
         Reg::RDI => format!("rdi"),
         Reg::RSI => format!("rsi"),
         Reg::R15 => format!("r15"),
+        Reg::RDX => format!("rdx"),
         // unreachable
         // _ => panic!("Invalid: no matched register")
     }
