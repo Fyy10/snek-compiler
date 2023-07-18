@@ -10,9 +10,9 @@
         - [Loop and block](#loop-and-block)
         - [Function](#function)
         - [Tuple and index](#tuple-and-index)
-        - [Tuple modification (new)](#tuple-modification-new)
+        - [Tuple modification](#tuple-modification)
           - [Handle cyclic values](#handle-cyclic-values)
-        - [Equality (new)](#equality-new)
+        - [Equality](#equality)
           - [Handle cyclic equality](#handle-cyclic-equality)
     - [Abstract Syntax (in Rust)](#abstract-syntax-in-rust)
     - [Data Representations](#data-representations)
@@ -30,9 +30,9 @@
       - [Index wrong args](#index-wrong-args)
       - [Functions with tuples](#functions-with-tuples)
       - [Binary search tree (insert \& search)](#binary-search-tree-insert--search)
-      - [Equality tests (new)](#equality-tests-new)
-      - [Cyclic print (new)](#cyclic-print-new)
-      - [Cyclic equality (new)](#cyclic-equality-new)
+      - [Equality tests](#equality-tests)
+      - [Cyclic print](#cyclic-print)
+      - [Cyclic equality](#cyclic-equality)
   - [References \& Credits](#references--credits)
 
 An x86_64 compiler for snek language.
@@ -62,10 +62,10 @@ An x86_64 compiler for snek language.
     | (tuple <expr>+)
     | (index <expr> <expr>)
     | nil
-    | (tuple-set! <expr> <expr> <expr>) (new)
+    | (tuple-set! <expr> <expr> <expr>)
 
 <op1> := add1 | sub1 | isnum | isbool | print
-<op2> := + | - | * | < | > | >= | <= | = | == (new)
+<op2> := + | - | * | < | > | >= | <= | = | ==
 
 <binding> := (<identifier> <expr>)
 ```
@@ -168,7 +168,7 @@ Example using tuple and index:
 )
 ```
 
-##### Tuple modification (new)
+##### Tuple modification
 
 Use the `tuple-set!` keyword to modify a tuple with index and value, return the tuple.
 
@@ -214,7 +214,7 @@ seen.pop();
 tuple_str
 ```
 
-##### Equality (new)
+##### Equality
 
 The `==` operator compares the structural equality of two tuples and `=` checks the reference equality if the two arguments are both tuples.
 
@@ -296,7 +296,7 @@ enum Op2 {
     GreaterEqual,
     Less,
     LessEqual,
-    StructEqual, // new
+    StructEqual,
 }
 
 enum Expr {
@@ -318,8 +318,7 @@ enum Expr {
     Tuple(Vec<Expr>),
     Index(Box<Expr>, Box<Expr>),
     Nil,
-
-    TupleSet(Box<Expr>, Box<Expr>, Box<Expr>), // new
+    TupleSet(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 enum Def {
@@ -697,7 +696,7 @@ false
 (tuple (tuple nil -2 (tuple nil -1 nil)) 0 (tuple nil 1 (tuple nil 2 nil)))
 ```
 
-#### Equality tests (new)
+#### Equality tests
 
 Test file: `tests/ext_equal.snek`
 
@@ -735,7 +734,7 @@ false
 false
 ```
 
-#### Cyclic print (new)
+#### Cyclic print
 
 Test file: `tests/ext_cycle_print1.snek`
 
@@ -811,7 +810,7 @@ $ ./tests/ext_cycle_print3.run
 (tuple true (tuple false 2 3 4) (tuple -1 -2 -3))
 ```
 
-#### Cyclic equality (new)
+#### Cyclic equality
 
 Test file: `tests/ext_cycle_equal1.snek`
 
